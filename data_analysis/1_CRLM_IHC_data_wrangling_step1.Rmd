@@ -15,8 +15,11 @@ library(ggplot2)
 ``` 
 
 ```{r }
-ihcDataOrigFn <- "../data/Detec2measurements_210420.csv"
-ihcDataParsedFn <- "../out/CRLM_IHC_data_tidied.csv"
+# Configure data to process (invasion front + peritumoral or intratumor)
+invPeritOrIntratumor <- "intratum" #     "rim_outer" # 
+
+ihcDataOrigFn <- paste0("../data/Detec2measurements_", invPeritOrIntratumor, "_081221.csv")
+ihcDataParsedFn <- paste0("../out/CRLM_IHC_data_", invPeritOrIntratumor, "_081221_tidied.csv")
 ```
 
 ```{r }
@@ -26,7 +29,12 @@ ihcDataOrig <- read.csv2(ihcDataOrigFn, na.strings = "")
 head(ihcDataOrig)
 
 # Rename columns
-ihcData <- ihcDataOrig %>% rename(file_name = Image, tiles_annotation = Parent, dist2inv_front = Distance.to.annotation.with.Invasion.Front.µm, dist2outer_band = Distance.to.annotation.with.OuterMargiN.µm, dab_mean = ROI..2.00.µm.per.pixel..DAB..Mean, ap_mean = ROI..2.00.µm.per.pixel..AP..Mean)
+colnames(ihcDataOrig)
+if(invPeritOrIntratumor == "rim_outer") {
+  ihcData <- ihcDataOrig %>% rename(file_name = Image, tiles_annotation = Parent, dist2inv_front = Distance.to.annotation.with.Invasion.Front.µm, dist2outer_band = Distance.to.annotation.with.OuterMargiN.µm, dab_mean = ROI..2.00.µm.per.pixel..DAB..Mean, ap_mean = ROI..2.00.µm.per.pixel..AP..Mean)  
+} else { # intratumor
+    ihcData <- ihcDataOrig %>% rename(file_name = Image, tiles_annotation = Parent, dist2inv_front = Distance.to.annotation.with.Invasion.front.µm, dab_mean = ROI..2.00.µm.per.pixel..DAB..Mean, ap_mean = ROI..2.00.µm.per.pixel..AP..Mean)  
+}
 head(ihcData)
 
 # Remove image file name extension
@@ -35,9 +43,19 @@ head(ihcData)
 
 # Fix marker names as in other images
 unique(ihcData$file_name)
-ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(maspin)", "masp"))
 ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(actsmo)", "actinsm"))
+ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(LVR-1)", "T8292-19-C"))
+if(invPeritOrIntratumor == "rim_outer") {
+  ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(maspin)", "masp"))
+  ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(CRP)", "crp"))
+  ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(SAA)", "saa"))
+  ihcData <- ihcData %>% mutate(file_name = str_replace(file_name, "(t4571-14-K)", "T4571-14-K"))
+}
 unique(ihcData$file_name)
+# Obs, tmp hack, comment next lines!!
+#if(invPeritOrIntratumor == "intratumor") {
+#  ihcData <- ihcData %>% mutate(tiles_annotation = "Intratumor")
+#}
 
 # Substitute in file name last occurrence of '-' by ':' to separate image name from markers
 # Negative lookahead is used when you want to match something (Word1) not followed by something else (Word2):  Word1(?!.*Word2)
@@ -86,11 +104,15 @@ for(marker_combination in levels(ihcData$markers)) {
   aps <- c(aps, "ap")
   # Update dataset by filling columns dab_markers and ap_markers for the current staining combination
   # Alternative implementation, mutate_cond: https://stackoverflow.com/questions/34096162/dplyr-mutate-replace-several-columns-on-a-subset-of-rows
+  # TODO: don't add ap_markers when only one (DAB) marker
   ihcData <- ihcData %>% mutate(dab_markers = ifelse(markers == marker_combination, paste(dabs, collapse = "_"), dab_markers),
-                                ap_markers = ifelse(markers == marker_combination, paste(aps, collapse = "_"), ap_markers))
+                                ap_markers = ifelse(markers == marker_combination & num_markers > 1, paste(aps, collapse = "_"), ap_markers))
 
 }
 head(ihcData)
+table(ihcData$tiles_annotation)
+table(ihcData$dab_markers)
+table(ihcData$ap_markers)
 
 # Write tidied file to out
 write.csv(ihcData, ihcDataParsedFn, row.names = F)

@@ -16,16 +16,29 @@ library(hexbin)
 ``` 
 
 ```{r }
-ihcData <- "../out/CRLM_IHC_data_parsed.csv"
-ihcDataDistLongFn <- "../out/CRLM_IHC_data_long.csv"
-ihcDataDistAvgFn <- "../out/CRLM_IHC_data_avg.csv"
+ihcDataInvPeritFn <- "../out/CRLM_IHC_data_invperit_tidied.csv"
+ihcDataIntraFn <- "../out/CRLM_IHC_data_intratumor_tidied.csv"
+#ihcDataDistLongFn <- "../out/CRLM_IHC_data_long.csv"
+#ihcDataDistAvgFn <- "../out/CRLM_IHC_data_avg.csv"
 ```
 
 ```{r }
-# Read ihc data
-ihcData <- read.csv(ihcData)
+# Read ihc data invperit
+ihcDataInvPerit <- read.csv(ihcDataInvPeritFn)
 #ihcDataOrig <- ihcDataOrig[ 1:300, ] # temporarily limit dataset size
-head(ihcData)
+head(ihcDataInvPerit)
+
+# Read ihc data intratumor
+ihcDataIntra <- read.csv(ihcDataIntraFn)
+ihcDataIntra <- ihcDataIntra %>% mutate(dist2outer_band = NA)
+ihcDataIntra <- ihcDataIntra %>% relocate(dab_mean, .after = tiles_annotation)
+head(ihcDataIntra)
+
+colnames(ihcDataInvPerit)
+colnames(ihcDataIntra)
+
+# Merge datasets
+ihcData <- rbind(ihcDataInvPerit, ihcDataIntra)
 
 # Dimensions of dataset
 dim(ihcData)
@@ -40,7 +53,7 @@ ihcData %>%  summarise(across(everything(), ~sum(is.na(.x)))) %>% unlist %>% sor
 length(levels(ihcData$image))
 levels(ihcData$image)
 
-# Markers, obs crp and saa missing
+# Markers
 levels(ihcData$markers)
 
 # Marker combinations per image
@@ -76,8 +89,8 @@ head(ihcDataLong)
 # Print combinations of markers and tiles' annotations
 ihcDataLong %>% group_by(markers) %>% summarise(tiles_annotation = unique(tiles_annotation))
 
-# Every marker has been quantified for invasion front (desmoplastic rim) and OuterMargiN (peritumoral liver) annotations
-# We can then combine dist2outerband (positive for tiles in invasion front) and dist2inv_front (positive for tiles in outer margin)
+# Marker have been quantified for OuterMargiN, invasion front (desmoplastic rim) and  (peritumoral liver) and Intratumor annotations
+# We can then combine dist2outerband (positive for tiles in invasion front) and dist2inv_front (positive for tiles in outer margin and in intratumor)
 # into a 'distance' column where the desmo rim are -values to 0, 0 is the proper invasion front (interface between annotations), and the peritumoral liver are +values
 ihcDataInvFront <- ihcDataLong %>% filter(tiles_annotation == "Invasion Front") %>% select(image, markers, dist2outer_band, intensity_mean) %>%                                              rename(distance = dist2outer_band) %>% mutate(distance = distance * (-1), region = "Desmo rim") # For desmo rim
 
@@ -146,15 +159,15 @@ head(ihcDataDistLong)
 
 # Reorder levels of markers as we want them to be ploted
 ihcDataDistLong$markers <- factor(ihcDataDistLong$markers, levels = c("ngfr_ap", "actinsm_ap", "cd34_ap", "p53_cd34_dab", "cd146_dab", "cd68_dab",
-                "p53_d240_dab", "cald_masp_ap", "cald_ck19_ap", "cald_ck7_ap", "cald_ck7_dab", "ck18_ap",  "ck18_dab"))
+                "p53_d240_dab", "cald_masp_ap", "cald_ck19_ap", "cald_ck7_ap", "cald_ck7_dab", "ck18_ap",  "ck18_dab", "crp_dab", "saa_dab"))
 
 # Average intensities over bins
 ihcDataDistAvg <- ihcDataDistLong %>% group_by(markers, dist_cat) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE))
 head(ihcDataDistAvg)
 
 # Write datasets
-write.csv(ihcDataDistLong, ihcDataDistLongFn, row.names = F)
-write.csv(ihcDataDistAvg, ihcDataDistAvgFn, row.names = F)
+#write.csv(ihcDataDistLong, ihcDataDistLongFn, row.names = F)
+#write.csv(ihcDataDistAvg, ihcDataDistAvgFn, row.names = F)
 ```
 
 Detailed plots by markers
@@ -187,7 +200,7 @@ ggplot(data = filter(ihcDataDistAvg, markers %in% c("ngfr_ap", "actinsm_ap", "p5
 # cd34_ap too faint. Regarding CD34, why increases after -500?
 ggplot(data = filter(ihcDataDistAvg, markers %in% c("ngfr_ap", "p53_cd34_dab", "cd34_ap", "cd146_dab"), dist_cat %in% x_labels_invf  ), aes(x = dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
 
-ggplot(data = filter(ihcDataDistAvg, markers %in% c("ngfr_ap", "cd68_dab", "ck18_ap"), dist_cat %in% x_labels_invf  ), aes(x = dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
+ggplot(data = filter(ihcDataDistAvg, markers %in% c("ngfr_ap", "cd68_dab", "ck18_ap", "CRP_dab", "SAA_dab"), dist_cat %in% x_labels_invf  ), aes(x = dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
 
 # cad_ck7_ap too faint. Interesting that ck7 comes before than ck19 (but then goes down), was it in some hepatocyte 
 # or are just mesurements in different cases
@@ -226,7 +239,7 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_a
 
 ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "p53_cd34_dab", "cd34_ap", "cd146_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
 
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "cd68_dab", "ck18_ap")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "cd68_dab", "ck18_ap", "crp_dab", "saa_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
 
 ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "cald_ck19_ap", "cald_ck7_ap", "cald_ck7_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
 ```

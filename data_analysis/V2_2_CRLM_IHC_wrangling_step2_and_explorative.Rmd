@@ -1,0 +1,154 @@
+---
+title: "2_CRLM_IHC_wrangling_step2_and_explorative"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Generated on: `r Sys.time()`
+
+```{r }
+library(tidyverse)
+library(ggplot2)
+library(hexbin)
+``` 
+
+```{r }
+ihcDataInvPeritFn <- "../out/CRLM_IHC_data_rim_outer_081221_tidied.csv"
+ihcDataIntraFn <- "../out/CRLM_IHC_data_intratum_081221_tidied.csv"
+#ihcDataDistLongFn <- "../out/CRLM_IHC_data_long.csv"
+#ihcDataDistAvgFn <- "../out/CRLM_IHC_data_avg.csv"
+```
+
+```{r }
+# Read ihc data invperit
+ihcDataInvPerit <- read.csv(ihcDataInvPeritFn)
+#ihcDataOrig <- ihcDataOrig[ 1:300, ] # temporarily limit dataset size
+head(ihcDataInvPerit)
+
+# Read ihc data intratumor
+ihcDataIntra <- read.csv(ihcDataIntraFn)
+ihcDataIntra <- ihcDataIntra %>% mutate(dist2outer_band = NA)
+ihcDataIntra <- ihcDataIntra %>% relocate(dab_mean, .after = tiles_annotation)
+head(ihcDataIntra)
+
+colnames(ihcDataInvPerit)
+colnames(ihcDataIntra)
+
+# Merge datasets
+ihcData <- rbind(ihcDataInvPerit, ihcDataIntra)
+
+# Dimensions of dataset
+dim(ihcData)
+
+# Column types
+ihcData %>%  summarise(across(everything(), class)) %>% unlist
+
+# Summary of missing data
+ihcData %>%  summarise(across(everything(), ~sum(is.na(.x)))) %>% unlist %>% sort(decreasing = T)
+
+# Images
+length(levels(ihcData$image))
+levels(ihcData$image)
+
+# Markers
+levels(ihcData$markers)
+
+# Marker combinations per image
+ihcData %>% group_by(image) %>% summarise(marker = unique(markers))
+
+# Number of images per marker combination
+ihcData %>% group_by(markers) %>% summarise(count = length(unique(image))) %>% arrange(desc(count))
+
+# List of images per combination
+ihcData %>% group_by(markers) %>% summarise(image = unique(image))
+
+# Number of images per dab markers
+ihcData %>% group_by(dab_markers) %>% summarise(count = length(unique(image))) %>% arrange(desc(count))
+
+# Number of images per ap markers
+ihcData %>% group_by(ap_markers) %>% summarise(count = length(unique(image))) %>% arrange(desc(count))
+```
+
+```{r }
+# Convert dataset from wide to long by unifying ap and dab markers into markers and ap and dab means into intensity mean
+apData <- ihcData %>% select(image, ap_markers, tiles_annotation, dist2inv_front, dist2outer_band, ap_mean)
+apData <- apData %>% rename(markers = ap_markers, intensity_mean = ap_mean)
+
+dabData <- ihcData %>% select(image, dab_markers, tiles_annotation, dist2inv_front, dist2outer_band, dab_mean)
+dabData <- dabData %>% rename(markers = dab_markers, intensity_mean = dab_mean)
+
+ihcDataLong <- rbind(apData, dabData)
+head(ihcDataLong)
+
+# Print combinations of markers and tiles' annotations
+ihcDataLong %>% group_by(markers) %>% summarise(tiles_annotation = unique(tiles_annotation))
+```
+
+```{r }
+# Marker have been quantified for OuterMargiN (peritumoral liver), invasion front (desmoplastic rim) and Intratumor (tumor center) annotations.
+# We can then combine dist2outerband (positive for tiles in invasion front) and dist2inv_front (positive for tiles in outer margin and in intratumor)
+# into a 'distance' column.
+
+# Desmo rim
+ihcDataInvFront <- ihcDataLong %>% filter(tiles_annotation == "Invasion Front") %>% select(image, markers, dist2outer_band, intensity_mean) %>%                                              rename(distance = dist2outer_band) %>% mutate(region = "Desmo rim") # For desmo rim
+head(ihcDataInvFront)
+
+# Peritumoral liver
+ihcDataOuterMargin <- ihcDataLong %>% filter(tiles_annotation == "OuterMargiN") %>% select(image, markers, dist2inv_front, intensity_mean) %>%                                              rename(distance = dist2inv_front) %>% mutate(region = "Peritumoral liver") # For outer band (peritumoral liver)
+ihcDataOuterMargin <- ihcDataOuterMargin %>% filter(distance <= 1500)
+head(ihcDataOuterMargin)
+
+# Intratumor
+ihcDataIntratumor <- ihcDataLong %>% filter(tiles_annotation == "Tumor") %>% select(image, markers, dist2inv_front, intensity_mean) %>%                                              rename(distance = dist2inv_front) %>% mutate(region = "Tumor center") # For intratumor
+head(ihcDataIntratumor)
+
+# Remerge again
+ihcDataDistLong <- rbind(ihcDataInvFront, ihcDataOuterMargin)
+ihcDataDistLong <- rbind(ihcDataDistLong, ihcDataIntratumor)
+head(ihcDataDistLong)
+
+# Recode as '0' negative intensity outliers
+ihcDataDistLong <- ihcDataDistLong %>% mutate(intensity_mean = ifelse(intensity_mean < 0, 0, intensity_mean))
+
+# Reorder levels of markers as we want them to be ploted
+ihcDataDistLong$markers <- factor(ihcDataDistLong$markers, levels = c("ngfr_ap", "actinsm_ap", "cd34_ap", "p53_cd34_dab", "cd146_dab", "cd68_dab",
+                "p53_d240_dab", "cald_masp_ap", "cald_ck19_ap", "cald_ck7_ap", "cald_ck7_dab", "ck18_ap",  "ck18_dab", "crp_dab", "saa_dab"))
+```
+
+```{r }
+# Standardize distances from um to % of the band for each combination of image and markers
+ihcDataDistLong %>% group_by(image, region, markers) %>% summarise(min_dist = min(distance), max_dist = max(distance))
+
+# Do the std distance calculation - interesting, when group_by + mutate, max(d) works in the group, by d on the row
+stdIhcDataDistLong <- ihcDataDistLong %>% group_by(image, region, markers) %>% mutate(std_distance = 100 / max(distance) * distance)
+head(stdIhcDataDistLong)
+
+# For peritumoral liver, keep std dist as is.
+# For desmo rim, translate std distace to -100 to 0
+stdIhcDataDistLong <- stdIhcDataDistLong %>% mutate(std_distance = ifelse(region == "Desmo rim", -std_distance, std_distance))
+# For tumor center, translate std distace to -200 to -100
+stdIhcDataDistLong <- stdIhcDataDistLong %>% mutate(std_distance = ifelse(region == "Tumor center", -std_distance - 100, std_distance))
+head(stdIhcDataDistLong)
+
+# Cut std distances into bins
+# set up cut-off values 
+breaks <- seq(-200, 100, by = 10)
+# bucketing values into bins
+stdIhcDataDistLong$std_dist_cat <- cut(stdIhcDataDistLong$std_distance, breaks=breaks, include.lowest=TRUE, right=FALSE)
+# inspect bins
+summary(stdIhcDataDistLong$std_dist_cat)
+
+# Average intensities over bins
+avgStdIhcDataDistLong <- stdIhcDataDistLong %>% group_by(markers, std_dist_cat) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(std_dist_cat))
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab", "cald_masp_ap")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "p53_cd34_dab", "cd34_ap", "cd146_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "cd68_dab", "ck18_ap", "crp_dab", "saa_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "cald_ck19_ap", "cald_ck7_ap", "cald_ck7_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + geom_line() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle(paste("means"))
+```
