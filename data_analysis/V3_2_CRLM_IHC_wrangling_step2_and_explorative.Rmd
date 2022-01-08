@@ -215,12 +215,12 @@ intensity_descr <- filtAvgRegionIhcDataDistLong %>%
   get_summary_stats(intensity_avg, show = c("n", "min", "max", "median"))
 intensity_descr
 
-# Significance test: Wilcox-test is used because lack of normality
+# Significance test: Pairwise Wilcox-test is used because lack of normality
 # and Benjamini & Hochberg correction for multiple testing
 stat.test <- filtAvgRegionIhcDataDistLong %>%
   group_by(markers) %>%
-  wilcox_test(
-    intensity_avg ~ region, paired = FALSE) %>%
+  pairwise_wilcox_test(
+    intensity_avg ~ region) %>%
     adjust_pvalue(method = "BH") %>%
     add_significance("p.adj")
 stat.test
