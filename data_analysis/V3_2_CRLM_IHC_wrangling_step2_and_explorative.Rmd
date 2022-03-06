@@ -14,11 +14,12 @@ library(tidyverse)
 library(ggplot2)
 library(rstatix)
 library(ggpubr)
+library(caTools)
 ``` 
 
 ```{r }
-ihcDataInvPeritFn <- "../out/CRLM_IHC_data_rim_outer_081221_tidied.csv"
-ihcDataIntraFn <- "../out/CRLM_IHC_data_intratum_081221_tidied.csv"
+ihcDataInvPeritFn <- "../out/CRLM_IHC_data_rim_outer_220204_tidied.csv"
+ihcDataIntraFn <- "../out/CRLM_IHC_data_intratum_220204_tidied.csv"
 #ihcDataDistLongFn <- "../out/CRLM_IHC_data_long.csv"
 #ihcDataDistAvgFn <- "../out/CRLM_IHC_data_avg.csv"
 ```
@@ -119,10 +120,11 @@ Fixes after comparison of images with V2 curves
 ```{r }
 # Remove intensities D2-40 > 0.3 (lymphatic endothelium) for T3989, T8292, T4648
 filtIhcDataDistLong <- ihcDataDistLong %>% filter(!(image %in% c("T3989-13-A", "T8292-19-C", "T4648-14-1L") & markers == "p53_d240_dab" & intensity_mean > 0.3))
-# Remove CD34 values (capillaries) for T3989
+# Remove CD34 values (capillaries) for T3989 (stroma)
 filtIhcDataDistLong <- filtIhcDataDistLong %>% filter(!(image == "T3989-13-A" & markers == "p53_cd34_dab"))
-# Combine cald_ck19_ap and cald_ck7_ap (mostly ductuli, although mix in T4571(?))
+# Combine cald_ck19_ap and cald_ck7_ap (ductuli) and remove for T4571-14-K, (mixed with caldesmon str)
 filtIhcDataDistLong <- filtIhcDataDistLong %>% mutate(markers = if_else(markers %in% c("cald_ck19_ap", "cald_ck7_ap"), "cald_ck19/ck7_ap", as.character(markers)))
+filtIhcDataDistLong <- filtIhcDataDistLong %>% filter(!(image == "T4571-14-K" & markers == "cald_ck19/ck7_ap"))
 
 # After comparison of images with V2 curves: Leave out (do not not plot): cald_masp_ap, cd34_ap, cd146_dab, saa_dab, cald_ck7_dab
 filtIhcDataDistLong <- filtIhcDataDistLong %>% filter(!(markers %in% c("cald_masp_ap", "cd34_ap", "cd146_dab", "saa_dab", "cald_ck7_dab")))
@@ -149,7 +151,7 @@ head(stdIhcDataDistLong)
 
 # Cut std distances into bins
 # set up cut-off values 
-breaks <- seq(-200, 100, by = 10)
+breaks <- seq(-200, 100, by = 5)
 # bucketing values into bins
 stdIhcDataDistLong$std_dist_cat <- cut(stdIhcDataDistLong$std_distance, breaks=breaks, include.lowest=TRUE, right=FALSE)
 # inspect bins
@@ -157,6 +159,10 @@ summary(stdIhcDataDistLong$std_dist_cat)
 
 # Average intensities over bins
 avgStdIhcDataDistLong <- stdIhcDataDistLong %>% group_by(markers, std_dist_cat) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(std_dist_cat))
+
+# Calculate the rolling avgeraged intensity
+avgStdIhcDataDistLong <- avgStdIhcDataDistLong %>% group_by(markers) %>% arrange (std_dist_cat) %>% mutate(intensity_roll_avg = runmean(intensity_avg, 5, alg = "exact", endrule = "mean", align = "center"))
+
 
 # Average intensities over compartments
 avgRegionIhcDataDistLong <- stdIhcDataDistLong %>% group_by(image, markers, region) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
@@ -175,30 +181,53 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "cald_ck19
 
 Plots v2
 ```{r }
-invf_perit_dists <- levels(cut(seq(-200,-90), breaks= seq(-200, -90, by = 10), include.lowest=TRUE, right=FALSE))
-invf_perit_dists <- invf_perit_dists[0 : (length(invf_perit_dists)-1)]
+invf_perit_dists <- levels(cut(seq(-100,100), breaks= seq(-100, 100, by = 5), include.lowest=TRUE, right=FALSE))
+#invf_perit_dists <- invf_perit_dists[0 : (length(invf_perit_dists)-1)]
 
 ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab")), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) +
-  geom_rect(aes(xmin=1, xmax=11,ymin=-Inf, ymax=Inf), fill="yellow1", color = NA, alpha = 0.01,  show.legend = FALSE) +
-  geom_rect(aes(xmin=11, xmax=20,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
-  geom_rect(aes(xmin=20, xmax=30,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +  
+  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="yellow1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=21, xmax=41,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=41, xmax=60,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +  
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Stroma markers") +
   scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat))
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab")), aes(x = std_dist_cat, y = intensity_roll_avg, group = markers, colour = markers)) +
+  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="yellow1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=21, xmax=41,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=41, xmax=60,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +  
+  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Stroma markers") +
+  scale_x_discrete(breaks = levels(avgStdIhcDataDistLong$std_dist_cat)[c(T, rep(F, 9))])
+  #scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat))
   
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & !std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) +
-  geom_rect(aes(xmin=1, xmax=10,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
-  geom_rect(aes(xmin=10, xmax=20,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +    
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) +
+  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +    
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Capillaries, macrophages and ductuli") +
-  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[11:30])
+  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
 
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & !std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + 
-  geom_rect(aes(xmin=1, xmax=10,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
-  geom_rect(aes(xmin=10, xmax=20,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +      
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_roll_avg, group = markers, colour = markers)) +
+  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +    
+  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Capillaries, macrophages and ductuli") +
+  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + 
+  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +      
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Hepatocytes (and ductuli in inv. front)")  +
-  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[11:30])
+  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
+
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_roll_avg, group = markers, colour = markers)) + 
+  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+  geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +      
+  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Hepatocytes (and ductuli in inv. front)")  +
+  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
 ```
 
 Summary stats, boxpPlots and significance between regions for the different markes

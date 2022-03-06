@@ -16,10 +16,10 @@ library(ggplot2)
 
 ```{r }
 # Configure data to process (invasion front + peritumoral or intratumor)
-invPeritOrIntratumor <- "intratum" #     "rim_outer" # 
+invPeritOrIntratumor <-  "intratum" #    "rim_outer" #   
 
-ihcDataOrigFn <- paste0("../data/Detec2measurements_", invPeritOrIntratumor, "_081221.csv")
-ihcDataParsedFn <- paste0("../out/CRLM_IHC_data_", invPeritOrIntratumor, "_081221_tidied.csv")
+ihcDataOrigFn <- paste0("../data/measurements_", invPeritOrIntratumor, "_220204.csv")
+ihcDataParsedFn <- paste0("../out/CRLM_IHC_data_", invPeritOrIntratumor, "_220204_tidied.csv")
 ```
 
 ```{r }
