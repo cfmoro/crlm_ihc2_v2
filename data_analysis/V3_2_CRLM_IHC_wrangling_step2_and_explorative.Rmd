@@ -145,6 +145,12 @@ head(stdIhcDataDistLong)
 # For peritumoral liver, keep std dist as is.
 # For desmo rim, translate std distace to -100 to 0
 stdIhcDataDistLong <- stdIhcDataDistLong %>% mutate(std_distance = ifelse(region == "Desmo rim", -std_distance, std_distance))
+stdIhcDataDistLong <- stdIhcDataDistLong %>% mutate(region_part = case_when(
+                    region == "Desmo rim" & std_distance < -50 ~ "Inner rim",
+                    region == "Desmo rim" & std_distance >= -50 ~ "Outer rim",
+                    region != "Desmo rim" ~ region
+                    
+))
 # For tumor center, translate std distace to -200 to -100
 stdIhcDataDistLong <- stdIhcDataDistLong %>% mutate(std_distance = ifelse(region == "Tumor center", -std_distance - 100, std_distance))
 head(stdIhcDataDistLong)
@@ -166,6 +172,7 @@ avgStdIhcDataDistLong <- avgStdIhcDataDistLong %>% group_by(markers) %>% arrange
 
 # Average intensities over compartments
 avgRegionIhcDataDistLong <- stdIhcDataDistLong %>% group_by(image, markers, region) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
+avgRegionIhcDataDistLongV2 <- stdIhcDataDistLong %>% group_by(image, markers, region_part) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
 ```
 
 Plots v1
@@ -274,5 +281,55 @@ eff_size
 
 # Save datasets
 write.csv(filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab", "p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap", "ck18_ap", "crp_dab")), "ihcByDistances.csv", row.names = F)
+write.csv(filtAvgRegionIhcDataDistLong, "ihcBySlides.csv", row.names = F)
+```
+
+Summary stats V2, boxpPlots and significance between regions for the different markes - leaving out non-stromal markers and analyzing separately inner and out parts of the rim
+```{r }
+filtAvgRegionIhcDataDistLong <- avgRegionIhcDataDistLongV2 %>% filter(markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab"), region_part != "Peritumoral liver")
+filtAvgRegionIhcDataDistLong$markers <- droplevels(filtAvgRegionIhcDataDistLong$markers)
+filtAvgRegionIhcDataDistLong$region_part <- as.factor(filtAvgRegionIhcDataDistLong$region_part)
+filtAvgRegionIhcDataDistLong$region_part <- fct_relevel(filtAvgRegionIhcDataDistLong$region_part, "Outer rim", "Inner rim", "Tumor center")
+head(filtAvgRegionIhcDataDistLong)
+
+# Shapiro test for normality
+filtAvgRegionIhcDataDistLong %>% ungroup() %>% shapiro_test(intensity_avg)
+
+# Summary stats
+intensity_descr <- filtAvgRegionIhcDataDistLong %>%
+  group_by(markers, region_part) %>%
+  get_summary_stats(intensity_avg, show = c("n", "min", "max", "median"))
+intensity_descr
+
+# Significance test: Pairwise Wilcox-test is used because lack of normality
+# and Benjamini & Hochberg correction for multiple testing
+stat.test <- filtAvgRegionIhcDataDistLong %>%
+  group_by(markers) %>%
+  pairwise_wilcox_test(
+    intensity_avg ~ region_part) %>%
+    adjust_pvalue(method = "BH") %>%
+    add_significance("p.adj")
+stat.test
+
+# Create the box plots
+bxp <- ggboxplot(
+  filtAvgRegionIhcDataDistLong, x = "markers", y = "intensity_avg",
+  color = "region_part", palette = "jco"
+  ) 
+# Add statistical test p-values
+stat.test1 <- stat.test %>% add_xy_position(x = "markers")
+bxp + stat_pvalue_manual(label = "p.adj.signif",
+  stat.test1, tip.length = 0) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Effect sizes
+eff_size <- filtAvgRegionIhcDataDistLong %>%
+  group_by(markers) %>%
+  wilcox_effsize(
+    intensity_avg ~ region_part, paired = FALSE)
+eff_size
+
+# Save datasets
+#write.csv(filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab", "p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap", "ck18_ap", "crp_dab")), "ihcByDistances.csv", row.names = F)
 write.csv(filtAvgRegionIhcDataDistLong, "ihcBySlides.csv", row.names = F)
 ```
