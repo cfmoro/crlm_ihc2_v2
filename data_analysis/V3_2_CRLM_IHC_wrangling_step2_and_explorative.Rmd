@@ -10,8 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 Generated on: `r Sys.time()`
 
 ```{r }
+library(Rmisc)
 library(tidyverse)
-library(ggplot2)
 library(rstatix)
 library(ggpubr)
 library(caTools)
@@ -163,12 +163,19 @@ stdIhcDataDistLong$std_dist_cat <- cut(stdIhcDataDistLong$std_distance, breaks=b
 # inspect bins
 summary(stdIhcDataDistLong$std_dist_cat)
 
-# Average intensities over bins
-avgStdIhcDataDistLong <- stdIhcDataDistLong %>% group_by(markers, std_dist_cat) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(std_dist_cat))
-
-# Calculate the rolling avgeraged intensity
-avgStdIhcDataDistLong <- avgStdIhcDataDistLong %>% group_by(markers) %>% arrange (std_dist_cat) %>% mutate(intensity_roll_avg = runmean(intensity_avg, 5, alg = "exact", endrule = "mean", align = "center"))
-
+# Average intensities with 95% CIs over bins
+#avgStdIhcDataDistLong <- stdIhcDataDistLong %>% group_by(markers, std_dist_cat) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(std_dist_cat))
+avgStdIhcDataDistLong <- stdIhcDataDistLong %>% group_by(markers, std_dist_cat) %>% summarise(intensity_avg = CI(na.omit(intensity_mean), ci = 0.95)["mean"],
+                                                                                              intensity_lower = CI(na.omit(intensity_mean), ci = 0.95)["lower"],
+                                                                                              intensity_upper = CI(na.omit(intensity_mean), ci = 0.95)["upper"]) %>% filter(!is.na(std_dist_cat)
+                                                                                              )
+# Calculate the rolling averaged intensity and 95% CIs
+# https://stackoverflow.com/questions/70429206/python-calculate-confidence-interval-on-a-rolling-basis
+avgStdIhcDataDistLong <- avgStdIhcDataDistLong %>% group_by(markers) %>% arrange (std_dist_cat) %>% mutate(intensity_avg_roll = runmean(intensity_avg, 5, alg = "exact", endrule = "mean", align = "center"),
+                                                                                                           intensity_std_roll = runsd(intensity_avg, 5, endrule = "sd", align = "center"),
+                                                                                                           intensity_lower_roll = intensity_avg_roll - 1.96 * intensity_std_roll / sqrt(n()),
+                                                                                                           intensity_upper_roll = intensity_avg_roll + 1.96 * intensity_std_roll / sqrt(n())
+                                                                                                          )
 
 # Average intensities over compartments
 avgRegionIhcDataDistLong <- stdIhcDataDistLong %>% group_by(image, markers, region) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
@@ -199,7 +206,7 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_a
   ggtitle("Stroma markers") +
   scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat))
 
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab")), aes(x = std_dist_cat, y = intensity_roll_avg, group = markers, colour = markers)) +
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap", "p53_d240_dab")), aes(x = std_dist_cat, y = intensity_avg_roll, group = markers, colour = markers)) +
   geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="yellow1", color = NA, alpha = 0.01,  show.legend = FALSE) +
   geom_rect(aes(xmin=21, xmax=41,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
   geom_rect(aes(xmin=41, xmax=60,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +  
@@ -215,7 +222,7 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68
   ggtitle("Capillaries, macrophages and ductuli") +
   scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
 
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_roll_avg, group = markers, colour = markers)) +
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg_roll, group = markers, colour = markers)) +
   geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
   geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +    
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
@@ -229,13 +236,90 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab")
   ggtitle("Hepatocytes (and ductuli in inv. front)")  +
   scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
 
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_roll_avg, group = markers, colour = markers)) + 
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg_roll, group = markers, colour = markers)) + 
   geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
   geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +      
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Hepatocytes (and ductuli in inv. front)")  +
   scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
 ```
+Plots v3 - Publication plots
+```{r }
+# https://www.roelpeters.be/add-confidence-interval-line-ggplot/
+
+#ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) +
+#  geom_rect(aes(xmin=1, xmax=21,ymin=-Inf, ymax=Inf), fill="wheat1", color = NA, alpha = 0.01,  show.legend = FALSE) +
+#  geom_rect(aes(xmin=21, xmax=40,ymin=-Inf, ymax=Inf), fill="darkslategray1", color = NA, alpha = 0.01,  show.legend = FALSE) +    
+#  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#  geom_ribbon(aes(ymin = intensity_lower, ymax = intensity_upper), alpha = 0.1) +
+#  ggtitle("Capillaries, macrophages and ductuli") +
+#  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
+
+# Fig 5a
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + 
+  geom_line() + 
+  scale_color_manual(values=c("#e19273", "#86b5da")) +
+  geom_ribbon(aes(ymin = intensity_lower, ymax = intensity_upper, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
+  scale_fill_manual(values=c("#e19273", "#86b5da")) +  
+  geom_vline(xintercept = "[0,5)") +
+  theme_bw() + theme(
+    axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+    axis.title.x = element_text(hjust = 0),
+    panel.grid.minor.y = element_blank(),
+    legend.position = "none"
+    ) +
+  scale_x_discrete(breaks = c("[-50,-45)", "[50,55)")) +
+  xlab("-100%                                                               Interface                                                             100%") + 
+  ylab("Average intensity") +
+  labs(subtitle = "                                 Fibrotic rim                                                                  Liver") +  
+  annotate(geom="text", x=32, y=0.37, label="CK18", size=6, color="#e19273") +
+  annotate(geom="text", x=35, y=0.18, label="CRP", size=6, color="#86b5da")
+ggsave("plots/Fig 5a.pdf")
+
+# Fig 5d
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68_dab", "cald_ck19/ck7_ap") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg_roll, group = markers, colour = markers)) +
+  geom_line()  + 
+  scale_color_manual(values=c("#86b5da", "#e19273", "#99314c")) +
+  geom_ribbon(aes(ymin = intensity_lower_roll, ymax = intensity_upper_roll, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
+  scale_fill_manual(values=c("#86b5da", "#e19273", "#99314c")) +  
+  geom_vline(xintercept = "[0,5)") +
+  theme_bw() + theme(
+    axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+    axis.title.x = element_text(hjust = 0),
+    panel.grid.minor.y = element_blank(),
+    legend.position = "none"
+    ) +
+  scale_x_discrete(breaks = c("[-50,-45)", "[50,55)")) +
+  xlab("-100%                                                              Interface                                                            100%") + 
+  ylab("Intensity, rolling average") +
+  labs(subtitle = "                                Fibrotic rim                                                                  Liver") +  
+  annotate(geom="text", x=32, y=0.125, label="CD34", size=6, color="#86b5da") +
+  annotate(geom="text", x=27.7, y=0.09, label="CD68", size=6, color="#e19273") +
+  annotate(geom="text", x=25, y=0.013, label="CK7", size=6, color="#99314c")
+ggsave("plots/Fig 5d.pdf")
+
+# Fig 6a
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_ap")), aes(x = std_dist_cat, y = intensity_avg_roll, group = markers, colour = markers)) +
+  geom_line() + 
+  scale_color_manual(values=c("#e19273", "#86b5da")) +
+  geom_ribbon(aes(ymin = intensity_lower_roll, ymax = intensity_upper_roll, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
+  scale_fill_manual(values=c("#e19273", "#86b5da")) +    
+  geom_vline(xintercept = "[-100,-95)") +  
+  geom_vline(xintercept = "[0,5)") +
+  theme_bw() + theme(
+    axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+    axis.title.x = element_text(hjust = 0),
+    legend.position = "none"
+    ) +
+  scale_x_discrete(breaks = c("[-150,-145)", "[-50,-45)", "[50,55)")) +
+  xlab("-200%                                     -100%                                        Interface                                   100%") + 
+  ylab("Intensity, rolling average") + 
+  labs(subtitle = "                       Tumor                                        Fibrotic rim                                       Liver") +
+  annotate(geom="text", x=8, y=0.05, label="NGFR", size=6, color="#e19273") +
+  annotate(geom="text", x=8.5, y=0.21, label="ASMA", size=6, color="#86b5da")
+ggsave("plots/Fig 6a.pdf")
+```
+
 
 Summary stats, boxpPlots and significance between regions for the different markes
 ```{r }
