@@ -160,6 +160,11 @@ head(stdIhcDataDistLong)
 breaks <- seq(-200, 100, by = 5)
 # bucketing values into bins
 stdIhcDataDistLong$std_dist_cat <- cut(stdIhcDataDistLong$std_distance, breaks=breaks, include.lowest=TRUE, right=FALSE)
+
+# Obs! Average intensities per distance bin for each image first. Added during revision.
+stdIhcDataDistLong2 <- stdIhcDataDistLong %>% group_by(image, markers, region, region_part, std_dist_cat) %>% summarize(intensity_mean = mean(intensity_mean, na.rm = T))
+stdIhcDataDistLong <- stdIhcDataDistLong %>% group_by(image, markers, std_dist_cat) %>% summarize(intensity_mean = mean(intensity_mean, na.rm = T))
+
 # inspect bins
 summary(stdIhcDataDistLong$std_dist_cat)
 
@@ -178,8 +183,8 @@ avgStdIhcDataDistLong <- avgStdIhcDataDistLong %>% group_by(markers) %>% arrange
                                                                                                           )
 
 # Average intensities over compartments
-avgRegionIhcDataDistLong <- stdIhcDataDistLong %>% group_by(image, markers, region) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
-avgRegionIhcDataDistLongV2 <- stdIhcDataDistLong %>% group_by(image, markers, region_part) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
+avgRegionIhcDataDistLong <- stdIhcDataDistLong2 %>% group_by(image, markers, region) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
+avgRegionIhcDataDistLongV2 <- stdIhcDataDistLong2 %>% group_by(image, markers, region_part) %>% summarise(intensity_avg = mean(intensity_mean, na.rm = TRUE)) %>% filter(!is.na(markers), !is.na(intensity_avg)) # TODO: Where do those NaN come from?
 ```
 
 Plots v1
@@ -272,8 +277,8 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab")
   xlab("-100%                                                               Interface                                                             100%") + 
   ylab("Average intensity") +
   labs(subtitle = "                                 Fibrotic rim                                                                  Liver") +  
-  annotate(geom="text", x=32, y=0.37, label="CK18", size=6, color="#e19273") +
-  annotate(geom="text", x=35, y=0.18, label="CRP", size=6, color="#86b5da")
+  annotate(geom="text", x=32, y=0.38, label="CK18", size=6, color="#e19273") +
+  annotate(geom="text", x=35, y=0.19, label="CRP", size=6, color="#86b5da")
 ggsave("plots/Fig 5a.pdf")
 
 # Fig 5d
@@ -315,8 +320,8 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_a
   xlab("-200%                                     -100%                                        Interface                                   100%") + 
   ylab("Intensity, rolling average") + 
   labs(subtitle = "                       Tumor                                        Fibrotic rim                                       Liver") +
-  annotate(geom="text", x=8, y=0.05, label="NGFR", size=6, color="#e19273") +
-  annotate(geom="text", x=8.5, y=0.21, label="ASMA", size=6, color="#86b5da")
+  annotate(geom="text", x=8, y=0.15, label="NGFR", size=6, color="#e19273") +
+  annotate(geom="text", x=7.5, y=0.225, label="ASMA", size=6, color="#86b5da")
 ggsave("plots/Fig 6a.pdf")
 ```
 
