@@ -261,11 +261,12 @@ Plots v3 - Publication plots
 #  scale_x_discrete(limits=levels(avgStdIhcDataDistLong$std_dist_cat)[21:60])
 
 # Fig 5a
-ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg, group = markers, colour = markers)) + 
+ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab") & std_dist_cat %in% invf_perit_dists), aes(x = std_dist_cat, y = intensity_avg_roll, group = markers, colour = markers)) + 
   geom_line() + 
   scale_color_manual(values=c("#e19273", "#86b5da")) +
-  geom_ribbon(aes(ymin = intensity_lower, ymax = intensity_upper, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
+  geom_ribbon(aes(ymin = intensity_lower_roll, ymax = intensity_upper_roll, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
   scale_fill_manual(values=c("#e19273", "#86b5da")) +  
+  geom_rect(aes(xmin=18.5, xmax=23.5,ymin=-Inf, ymax=Inf), fill="lightgray", color = NA, alpha = 0.02,  show.legend = FALSE) +  
   geom_vline(xintercept = "[0,5)") +
   theme_bw() + theme(
     axis.text.x=element_blank(), axis.ticks.x=element_blank(),
@@ -276,7 +277,7 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ck18_ap", "crp_dab")
   scale_x_discrete(breaks = c("[-50,-45)", "[50,55)")) +
   xlab("-100%                                                               Interface                                                             100%") + 
   ylab("Average intensity") +
-  labs(subtitle = "                                 Fibrotic rim                                                                  Liver") +  
+  labs(subtitle = "                                 Fibrotic rim                                                                  Liver") + 
   annotate(geom="text", x=32, y=0.38, label="CK18", size=6, color="#e19273") +
   annotate(geom="text", x=35, y=0.19, label="CRP", size=6, color="#86b5da")
 ggsave("plots/Fig 5a.pdf")
@@ -287,6 +288,7 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("p53_cd34_dab", "cd68
   scale_color_manual(values=c("#86b5da", "#e19273", "#99314c")) +
   geom_ribbon(aes(ymin = intensity_lower_roll, ymax = intensity_upper_roll, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
   scale_fill_manual(values=c("#86b5da", "#e19273", "#99314c")) +  
+  geom_rect(aes(xmin=18.5, xmax=23.5,ymin=-Inf, ymax=Inf), fill="lightgray", color = NA, alpha = 0.02,  show.legend = FALSE) +    
   geom_vline(xintercept = "[0,5)") +
   theme_bw() + theme(
     axis.text.x=element_blank(), axis.ticks.x=element_blank(),
@@ -309,7 +311,9 @@ ggplot(data = filter(avgStdIhcDataDistLong, markers %in% c("ngfr_ap", "actinsm_a
   scale_color_manual(values=c("#e19273", "#86b5da")) +
   geom_ribbon(aes(ymin = intensity_lower_roll, ymax = intensity_upper_roll, fill = markers), alpha = 0.2, linetype="dashed", color="grey") +
   scale_fill_manual(values=c("#e19273", "#86b5da")) +    
+  geom_rect(aes(xmin=18.5, xmax=23.5,ymin=-Inf, ymax=Inf), fill="lightgray", color = NA, alpha = 0.02,  show.legend = FALSE) +    
   geom_vline(xintercept = "[-100,-95)") +  
+  geom_rect(aes(xmin=38.5, xmax=43.5,ymin=-Inf, ymax=Inf), fill="lightgray", color = NA, alpha = 0.02,  show.legend = FALSE) +    
   geom_vline(xintercept = "[0,5)") +
   theme_bw() + theme(
     axis.text.x=element_blank(), axis.ticks.x=element_blank(),
